@@ -1,0 +1,16 @@
+{
+  "name": "@web-auto/tasks",
+  "version": "1.0.0",
+  "dependencies": {
+    "@web-auto/core": "*"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.0",
+    "typescript": "^5.8.0",
+    "@types/node": "^22.0.0"
+  },
+  "scripts": {
+    "example": "ts-node src/example.ts",
+    "bas-payment-import": "ts-node src/bas-payment-import.ts"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "private": true,
+  "workspaces": [
+    "core",
+    "tasks"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "express": "^5.2.1",
+    "mongodb": "^7.1.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6"
+  }
+}
