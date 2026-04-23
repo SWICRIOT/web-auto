@@ -36,6 +36,7 @@ interface LedgerRow {
   aterstar: number;
   aterstarRaw: string;
   details: LedgerDetail[] | null; // null = not yet scraped
+  encryptedInvoiceId?: string; // extracted from the Granska PDF button href
   scrapedAt: string;
   detailsScrapedAt?: string;
 }
@@ -113,12 +114,12 @@ async function collapseAll(page: Page) {
 async function scrapeRowDetails(
   page: Page,
   rowIndex: number
-): Promise<LedgerDetail[] | null> {
+): Promise<{ details: LedgerDetail[] | null; encryptedInvoiceId?: string }> {
   // Ensure clean state
   await collapseAll(page);
 
   const expandBtns = page.locator("a.k-icon.k-i-expand");
-  if (rowIndex >= (await expandBtns.count())) return null;
+  if (rowIndex >= (await expandBtns.count())) return { details: null };
 
   const btn = expandBtns.nth(rowIndex);
   await btn.scrollIntoViewIfNeeded();
@@ -204,11 +205,26 @@ async function scrapeRowDetails(
     return [];
   }, masterRowId);
 
-  return details.map((d) => ({
+  // Extract the encryptedInvoiceId from the "Granska PDF" link inside the detail row.
+  // href format: /Distribution/ViewInvoice/{EncryptedInvoiceId}
+  const encryptedInvoiceId = await page.evaluate((uid) => {
+    const masterRow = document.querySelector(`tr[data-uid="${uid}"]`);
+    const detailRow = masterRow?.nextElementSibling;
+    if (!detailRow) return undefined;
+    const link = detailRow.querySelector<HTMLAnchorElement>(
+      'a[href*="/Distribution/ViewInvoice/"]'
+    );
+    if (!link) return undefined;
+    const m = link.getAttribute("href")?.match(/\/Distribution\/ViewInvoice\/([^/?#]+)/);
+    return m?.[1];
+  }, masterRowId);
+
+  const parsedDetails = details.map((d) => ({
     ...d,
     fordran: parseAmount(d.fordranRaw),
     inbetalt: parseAmount(d.inbetaltRaw),
   }));
+  return { details: parsedDetails, encryptedInvoiceId };
 }
 
 // ── Validation ──
@@ -287,10 +303,13 @@ async function main() {
     process.stdout.write(`\r[${i + 1}/${rows.length}] avi=${row.aviNr} ${row.medlem.padEnd(30).substring(0, 30)}`);
 
     let details: LedgerDetail[] | null = null;
+    let encryptedInvoiceId: string | undefined;
     let valid = false;
 
     for (let attempt = 1; attempt <= 3; attempt++) {
-      details = await scrapeRowDetails(page, i);
+      const result = await scrapeRowDetails(page, i);
+      details = result.details;
+      encryptedInvoiceId = result.encryptedInvoiceId;
       if (details && details.length > 0) {
         valid = validateDetails(row, details);
         if (valid) break;
@@ -300,6 +319,10 @@ async function main() {
         await page.waitForTimeout(500 * attempt);
       }
     }
+
+    const nowIso = new Date().toISOString();
+    const commonSet: Record<string, unknown> = { detailsScrapedAt: nowIso };
+    if (encryptedInvoiceId) commonSet.encryptedInvoiceId = encryptedInvoiceId;
 
     if (valid && details) {
       const detailSum = details.reduce((s, d) => s + d.fordran, 0);
@@ -311,7 +334,7 @@ async function main() {
       }
       await collection.updateOne(
         { aviNr: row.aviNr, ocr: row.ocr },
-        { $set: { details, detailsScrapedAt: new Date().toISOString(), detailSumMatchesBelopp: sumMatch } }
+        { $set: { ...commonSet, details, detailSumMatchesBelopp: sumMatch } }
       );
       ok++;
     } else {
@@ -321,7 +344,7 @@ async function main() {
       if (details) {
         await collection.updateOne(
           { aviNr: row.aviNr, ocr: row.ocr },
-          { $set: { details, detailsScrapedAt: new Date().toISOString() } }
+          { $set: { ...commonSet, details } }
         );
       }
     }
