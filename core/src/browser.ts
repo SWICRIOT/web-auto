@@ -26,7 +26,17 @@ export async function launchBrowser(
     storageDir = DEFAULT_STORAGE_DIR,
   } = options;
 
-  const browser = await chromium.launch({ headless });
+  // Prefer the system Chrome (real GPU stack) over Playwright's bundled Chromium, which
+  // falls back to SwiftShader software rendering (WebGL-heavy pages crawl). The args force
+  // hardware ANGLE/D3D11 past the bundled build's conservative defaults; if Chrome isn't
+  // installed, fall back to the bundled Chromium with the same flags.
+  const gpuArgs = ["--use-angle=d3d11", "--ignore-gpu-blocklist", "--enable-gpu-rasterization"];
+  let browser: Browser;
+  try {
+    browser = await chromium.launch({ headless, channel: "chrome", args: gpuArgs });
+  } catch {
+    browser = await chromium.launch({ headless, args: gpuArgs });
+  }
 
   const statePath = path.join(storageDir, "state.json");
   const hasState = fs.existsSync(statePath);
