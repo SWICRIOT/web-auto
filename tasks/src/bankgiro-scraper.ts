@@ -94,27 +94,50 @@ async function waitForBankgiroPage(context: BrowserContext): Promise<Page> {
 // ── Day list ──
 
 async function getDayListItems(page: Page): Promise<DayItem[]> {
-  return page.$$eval(
-    "xpath=//div[@name='daylist']//div[@class='scrollview-item' or contains(@class, 'scrollview-item ')]",
-    (items) =>
-      items.map((item) => {
-        const dateEl = item.querySelector("span.item-top-left");
-        const amountEl = item.querySelector("span.item-top-right");
-        const slipEl = item.querySelector("span.item-bottom-left");
-        const countEl = item.querySelector("span.item-bottom-right");
+  const items = await page.$$eval(
+    "div[name='daylist'] div.scrollview-item",
+    (nodes) =>
+      nodes.map((item) => {
+        // The bank rebuilt this list in Angular. The old span.item-top-left /
+        // item-top-right / item-bottom-left / item-bottom-right are gone; each row is now
+        //   <div class="row"><div class="col-6"><b>2026-08-27</b></div>
+        //                    <div class="col-6"><b>13 956,00</b></div></div>
+        //   <div class="row"><div class="col-8 f-6">Löpnummer 82 - 83</div>
+        //                    <div class="col-4 f-6">6 st</div></div>
+        const cols6 = item.querySelectorAll("div.col-6");
+        const dateText = (cols6[0]?.textContent || "").trim();
+        const amountText = (cols6[1]?.textContent || "").trim();
+        const slipText = (item.querySelector("div.col-8")?.textContent || "").trim();
+        const countText = (item.querySelector("div.col-4")?.textContent || "").trim();
+
         return {
-          date: dateEl?.textContent?.trim() || "",
+          date: dateText,
           totalAmount: parseFloat(
-            (amountEl?.textContent || "0").replace(/\s/g, "").replace(",", ".")
+            amountText.replace(/\s/g, "").replace(",", ".") || "0"
           ),
-          slipNumbers: (slipEl?.textContent || "").replace("Löpnummer ", "").trim(),
-          transactionCount: parseInt(
-            (countEl?.textContent || "0").replace(" st", "").trim(),
-            10
-          ),
+          slipNumbers: slipText.replace("Löpnummer ", "").trim(),
+          transactionCount: parseInt(countText.replace("st", "").trim() || "0", 10),
         };
       })
   );
+
+  // A LIST THAT PARSED TO NOTHING IS A BROKEN SELECTOR, NOT AN EMPTY DAY LIST.
+  //
+  // This is how the scrape silently did nothing on 2026-08-27. The stale selectors yielded
+  // date:"" for every row, and the caller's "past the start of our range" test compares
+  // date < startDate — which "" satisfies — so it stopped on the FIRST row and reported
+  // "Done. Scraped 0 new transactions" while the page displayed 70 days of deposits,
+  // including 50 584,00 SEK two days earlier. No error, no warning, no clue.
+  //
+  // Refusing here converts that into something a human can see.
+  const parsed = items.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d.date));
+  if (items.length > 0 && parsed.length === 0) {
+    throw new Error(
+      `Day list has ${items.length} row(s) but not one yielded a date — the bgonline DOM ` +
+        `has changed again. Refusing to report an empty scrape.`
+    );
+  }
+  return parsed;
 }
 
 async function loadMoreDays(page: Page): Promise<boolean> {
