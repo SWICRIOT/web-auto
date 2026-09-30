@@ -118,17 +118,33 @@ Files are named `Camt053.eody.065564696291F001.DYYMMDD.T*.xml`
 **Klubb** (Club): club card, annual report, roles/functions, batch edit, import, user accounts
 **Hjälp** (Help): wiki manual, support tickets
 
+## Fortnox (apps5.fortnox.se)
+
+BankID login is manual (Fortnox ID, then choose the tenant). The UI lives in an iframe
+(`/webapp-ui/<tenantId>?container#/...`) that calls an internal JSON API under `/api/...` with an
+`x-token` session header. Page API: `core/src/fortnox.ts` (captureToken, waitForAppFrame, getVoucher,
+activePostings, changeFinancialYear, setCostCenters). Learned 2026-09-30:
+- `GET /api/bf/vouchers/<series>-<no>?meta=1&year=<yearId>` reads any year; a PUT only works for the
+  session's selected year, switched with `PUT /api/bf/financialyears/change {"id":<yearId>}`.
+- A booked voucher's cost place (KS) can be changed in place with `PUT /api/bf/vouchers/<series>-<no>?meta=1`
+  (whole voucher as body); rows keep their rowNumber, no correction voucher. The public Fortnox API has no
+  such PUT.
+- Task `tasks/src/fortnox-cost-centers.ts <plan.json> [--apply] [--only 2025:K-6] [--log f]`: dry run by
+  default, resolves plan rows by account + amount (+ row text), idempotent, stops at the first deviation,
+  refuses to overwrite a different cost place unless the row says `reassign` + `from`. Run with
+  `TS_NODE_TRANSPILE_ONLY=1` (the tasks tsconfig rootDir excludes core/).
+
 ## Running
 
 ```bash
 # Start browser server (background)
-cd D:/web-auto && npx ts-node core/src/server.ts
+cd D:/projects/hbk/web-auto && npx ts-node core/src/server.ts
 
 # Start pilot for interactive use (background)
-cd D:/web-auto && npx ts-node core/src/pilot.ts
+cd D:/projects/hbk/web-auto && npx ts-node core/src/pilot.ts
 
 # Run a task script
-cd D:/web-auto && npx ts-node tasks/src/bas-payment-import.ts
+cd D:/projects/hbk/web-auto && npx ts-node tasks/src/bas-payment-import.ts
 
 # MCP server is started automatically by Claude Code
 ```
