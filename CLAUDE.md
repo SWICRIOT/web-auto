@@ -99,7 +99,7 @@ Boat club management system for Heleneborgs Båtklubb. Requires BankID login (ma
 
 ### Payment files location
 ```
-C:\Users\Alex\Dropbox\__MAIN__\Organisatoriska engagemang\HBK\Kassör\2025.2026\Inbetalningar\ISO20022\
+E:\Dropbox\__MAIN__\Organisatoriska engagemang\HBK\Kassör\2025.2026\Inbetalningar\ISO20022\
 ```
 Files are named `Camt053.eody.065564696291F001.DYYMMDD.T*.xml`
 
